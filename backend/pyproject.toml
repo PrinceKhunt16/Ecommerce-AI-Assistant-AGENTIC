@@ -1,0 +1,65 @@
+[project]
+name = "ecommerce-support-chatbot"
+version = "0.1.0"
+description = "Ecommerce support chatbot backend (FastAPI + LangGraph + Gemini, Postgres/pgvector)"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # --- Web / API ---
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    # --- Settings / validation ---
+    "pydantic>=2.10",
+    "pydantic-settings>=2.7",
+    # --- Auth ---
+    "pyjwt>=2.10",
+    "bcrypt>=4.2",
+    # --- Agent / LLM (Gemini only) ---
+    "langgraph>=0.2.60",
+    "langchain-core>=0.3.28",
+    "langchain-google-genai>=2.0",
+    # --- Observability / tracing ---
+    "langsmith>=0.2",
+    # --- RAG / vectors (pgvector + local embeddings) ---
+    "pgvector>=0.3.6",
+    "langchain-huggingface>=0.1.2",
+    "langchain-text-splitters>=0.3.4",
+    "sentence-transformers>=3.3",
+    # --- Persistence ---
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "redis>=5.2",
+    # --- MCP ---
+    "mcp>=1.2",
+    # --- Infra / utils ---
+    "structlog>=24.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "httpx>=0.28",
+    "ruff>=0.8",
+    "mypy>=1.14",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+ignore_missing_imports = true
