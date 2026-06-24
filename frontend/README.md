@@ -1,28 +1,44 @@
-# Smart Support — Agent Console (frontend)
+# Support Assistant — Console (frontend)
 
-A simple Next.js operator console for the **Smart Support Agent** backend. It exercises
-the AI customer-care API end to end: streaming chat across the chat/voice/email channels,
-ticket management, and conversation history inspection.
+A Next.js console for the **Ecommerce Support Chatbot** backend. Shoppers sign in, then
+chat with the AI agent (it streams its **thinking, tool calls, and answer** live over a
+WebSocket), browse the **product** catalog, track their own **orders**, and revisit past
+**conversations** — exercising the backend API end to end.
 
 ## Design
 
 - **Square-ish UI** — global border radius is `0`, so buttons, cards, inputs, and pills
   are crisp squares.
 - **Averta** as the UI font (loaded locally via `next/font/local` from `src/fonts/`).
-- Built with **shadcn/ui** (base-nova, neutral palette) on Tailwind CSS v4.
+- Built with **shadcn/ui** (neutral palette) on **Tailwind CSS v4**, **Next.js 16** /
+  **React 19**.
+
+## Auth
+
+The whole app sits behind an **auth gate** — until you sign in you see only a login /
+register card. Auth is **JWT bearer**: `POST /auth/login` or `POST /auth/register` returns a
+token, which is stored in `localStorage` (`cc_token`) and sent as `Authorization: Bearer
+<token>` on every request, and as a `?token=` query param on the chat WebSocket (browsers
+can't set an `Authorization` header on a socket).
+
+Register a new account, or use the backend's seeded demo login: **`demo@example.com` /
+`demo1234`** (created by the backend's `scripts.seed`).
 
 ## Features
 
 | Page | Route | What it does | API used |
 | --- | --- | --- | --- |
-| Chat | `/` | Streaming (SSE) or full replies; channel selector (chat/voice/email); optional `user_id` for long-term memory; shows `intent`, `tools_used`, `escalated` | `POST /chat`, `POST /chat/stream`, `POST /voice`, `POST /email` |
-| Tickets | `/tickets` | Create a ticket, look one up by ID, and update status/priority/assignee | `POST /ticket/create`, `GET /ticket/{id}`, `POST /ticket/update` |
-| Conversations | `/conversations` | Fetch a conversation by ID and view its persisted message history + summary | `GET /conversation/{id}` |
-| Status | sidebar | Live backend health indicator (polls every 15s) | `GET /ready` |
+| Chat | `/` | Live agent chat over one WebSocket. Streams `thinking` → `tool_call`/`tool_result` → `token` → `done`; shows the tool steps inline; continues a thread via the `conversation_id` from `done`; suggestion chips + "new chat" | `WS /ws/chat?token=` |
+| Products | `/products` | Browse the catalog; filter by search query / category | `GET /products` |
+| Orders | `/orders` | Your orders with status + tracking number | `GET /orders`, `GET /orders/{id}` |
+| Conversations | `/conversations` | List your conversations and view a thread's persisted message history; deep-linkable via `?id=<conversation_id>` | `GET /conversations`, `GET /conversations/{id}` |
+| Status | sidebar | Backend readiness indicator (DB + Redis), checked on load | `GET /ready` |
 
-The chat page generates the `conversation_id` client-side so a streamed conversation
-(whose response carries only tokens, not the id) can still be continued and opened on the
-Conversations page.
+Chat is **WebSocket-only** (`ChatSocket` in [src/lib/chat-socket.ts](src/lib/chat-socket.ts)):
+one connection is opened and reused across turns. Each turn sends `{ message,
+conversation_id }` and receives a stream of typed events terminated by `done` (carrying the
+`conversation_id` to continue the thread) or `error`. A failed turn surfaces the error but
+keeps the socket open for the next message.
 
 ## Getting started
 
@@ -31,9 +47,9 @@ npm install        # if not already installed
 npm run dev        # http://localhost:3000
 ```
 
-The backend must be running and must allow this origin. Its dev default
-(`CORS_ORIGINS=["http://localhost:3000"]`, `AUTH_ENABLED=false`) already matches, so no
-extra setup is needed — start the FastAPI server on `:8000` and the console connects.
+The backend must be running on `:8000` and must allow this origin. Its dev defaults
+(`CORS_ORIGINS=["http://localhost:3000"]`) already match, so once the FastAPI server is up
+the console connects. Sign in with the seeded demo account or register a new one.
 
 ## Configuration
 
@@ -41,32 +57,38 @@ Copy `.env.example` to `.env.local` (already present with defaults) and adjust:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:8000` | Backend origin |
+| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:8000` | Backend origin (also derives the `ws://` chat URL) |
 | `NEXT_PUBLIC_API_PREFIX` | `/api/v1` | API prefix |
-| `NEXT_PUBLIC_API_KEY` | _(unset)_ | Only needed if the backend runs with `AUTH_ENABLED=true`; sent as `X-API-Key` |
+
+Authentication is handled in-app via login / register — no API key to configure.
 
 ## Notes
 
-- **Tickets need a real `user_id`** — the backend FK-enforces it. Seed users with the
-  backend's `scripts.seed_data` and read the UUIDs from Postgres.
-- **Streaming hides metadata** — `/chat/stream` only returns tokens, so `intent`/
-  `tools_used` badges appear only on non-streamed replies. Toggle streaming off to see them.
-- `npm run build` type-checks, lints, and produces a production build.
+- **Sign in first.** Every page (chat, orders, conversations) needs a JWT; the catalog is
+  public on the backend but the console still gates it behind login.
+- **The agent thinks out loud.** `thinking` and tool steps render inline as the turn runs,
+  so you can watch the `planner → executor → synthesizer` work, not just the final answer.
+- `npm run build` type-checks and produces a production build; `npm run lint` runs ESLint.
 
 ## Structure
 
 ```
 src/
-  app/                     # routes: / (chat), /tickets, /conversations
+  app/                       # routes: / (chat), /products, /orders, /conversations
   components/
-    app-shell.tsx          # sidebar + nav
-    system-status.tsx      # /ready poller
-    chat/                  # chat console
-    tickets/               # ticket create/manage + status pills
-    conversations/         # conversation viewer
-    ui/                    # shadcn components
+    app-shell.tsx            # sidebar + nav + auth gating
+    page-header.tsx
+    system-status.tsx        # /ready indicator (DB + Redis)
+    auth/                    # auth provider + login/register gate
+    chat/                    # chat console + markdown renderer
+    products/                # catalog browser
+    orders/                  # orders + status badges
+    conversations/           # conversation list + viewer
+    ui/                      # shadcn components
   lib/
-    api.ts                 # typed client (incl. SSE stream reader)
-    config.ts  types.ts  format.ts
-  fonts/                   # Averta.woff2 / .otf
+    api.ts                   # typed REST client (auth/products/orders/conversations/health)
+    chat-socket.ts           # WebSocket client for the agent chat
+    token.ts                 # JWT storage (localStorage)
+    config.ts  types.ts  format.ts  utils.ts
+  fonts/                     # Averta.woff2 / .otf
 ```
